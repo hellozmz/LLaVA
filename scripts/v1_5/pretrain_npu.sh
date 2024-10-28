@@ -7,8 +7,8 @@ export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver/:$LD_LIBRARY_PATH
 
 deepspeed  llava/train/train_npu.py \
     --deepspeed ./scripts/zero3.json \
-    --model_name_or_path lmsys/vicuna-7b-v1.5 \
-    --version v1 \
+    --model_name_or_path lmsys/vicuna-13b-v1.5 \
+    --version v2 \
     --data_path ./playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
     --image_folder ./playground/data/LLaVA-Pretrain/images \
     --vision_tower openai/clip-vit-large-patch14-336 \
@@ -21,9 +21,9 @@ deepspeed  llava/train/train_npu.py \
     --bf16 True \
     --output_dir ./checkpoints/llava-v1.5-7b \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 16 \
+    --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 4 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
     --save_steps 50000 \
