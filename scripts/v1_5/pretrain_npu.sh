@@ -21,7 +21,8 @@ deepspeed  llava/train/train_npu.py \
     --bf16 True \
     --output_dir ./checkpoints/llava-v1.5-7b \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
+    --max_steps 500 \
+    --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 4 \
     --evaluation_strategy "no" \
