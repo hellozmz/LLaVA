@@ -253,11 +253,13 @@ def _tokenize_fn(strings: Sequence[str],
         tokenizer(
             text,
             return_tensors="pt",
-            padding="longest",
+            padding="max_length",
             max_length=tokenizer.model_max_length,
             truncation=True,
         ) for text in strings
     ]
+    print(f"==================tokenizer.model_max_length {tokenizer.model_max_length}==============", flush=True)
+
     input_ids = labels = [
         tokenized.input_ids[0] for tokenized in tokenized_list
     ]
@@ -372,6 +374,7 @@ def preprocess_llama_2(
     sep = "[/INST] "
     for conversation, target in zip(conversations, targets):
         total_len = int(target.ne(tokenizer.pad_token_id).sum())
+        print(f"preprocess_llama_2===============total_len {total_len}===============", flush=True)
 
         rounds = conversation.split(conv.sep2)
         cur_len = 1
@@ -434,17 +437,32 @@ def preprocess_v1(
         conversations.append(conv.get_prompt())
 
     # Tokenize conversations
+    max_length = tokenizer.model_max_length
 
     if has_image:
-        input_ids = torch.stack([tokenizer_image_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
+        # input_ids = torch.stack([tokenizer_image_token(prompt, tokenizer, return_tensors='pt') for prompt in conversations], dim=0)
+        input_ids_list = [tokenizer_image_token(prompt, tokenizer, return_tensors='pt').squeeze(0) for prompt in conversations]
+        pre_padding_lengths = [input_id.size(0) for input_id in input_ids_list]
+        # print(f"has_image==============================", flush=True)
+        custom_pad_id = tokenizer.pad_token_id
+
+        input_ids = torch.stack([
+            torch.cat([input_id, input_id.new_full((max_length - input_id.size(0),), custom_pad_id)])
+            if input_id.size(0) < max_length else input_id[:max_length]  # 若超出 max_length 则截断
+            for input_id in input_ids_list
+        ])
+        post_padding_lengths = [input_id.size(0) for input_id in input_ids]
+        # for i, (pre_len, post_len) in enumerate(zip(pre_padding_lengths, post_padding_lengths)):
+        #     print(f"Input {i}: Pre-padding length = {pre_len}, Post-padding length = {post_len}", flush=True)
     else:
         input_ids = tokenizer(
             conversations,
             return_tensors="pt",
-            padding="longest",
+            padding="max_length",
             max_length=tokenizer.model_max_length,
             truncation=True,
         ).input_ids
+        print(f"no has_image==============================", flush=True)
 
     targets = input_ids.clone()
 
@@ -454,6 +472,7 @@ def preprocess_v1(
     sep = conv.sep + conv.roles[1] + ": "
     for conversation, target in zip(conversations, targets):
         total_len = int(target.ne(tokenizer.pad_token_id).sum())
+        # print(f"preprocess_v1===============total_len {total_len}===============", flush=True)
 
         rounds = conversation.split(conv.sep2)
         cur_len = 1
@@ -531,6 +550,7 @@ def preprocess_mpt(
             max_length=tokenizer.model_max_length,
             truncation=True,
         ).input_ids
+    # print(f"tokenizer.model_max_length {tokenizer.model_max_length}", flush=True)
 
     targets = input_ids.clone()
     assert conv.sep_style == conversation_lib.SeparatorStyle.MPT
@@ -539,6 +559,7 @@ def preprocess_mpt(
     sep = conv.sep + conv.roles[1]
     for conversation, target in zip(conversations, targets):
         total_len = int(target.ne(tokenizer.pad_token_id).sum())
+        print(f"preprocess_mpt===============total_len {total_len}===============", flush=True)
 
         rounds = conversation.split(conv.sep)
         re_rounds = [conv.sep.join(rounds[:3])] # system + user + gpt
@@ -732,10 +753,13 @@ class LazySupervisedDataset(Dataset):
         # image exist in the data
         if 'image' in self.list_data_dict[i]:
             data_dict['image'] = image
+            # print(f"self.list_data_dict[i] {self.list_data_dict[i]}", flush=True)
         elif self.data_args.is_multimodal:
             # image does not exist in the data, but the model is multimodal
             crop_size = self.data_args.image_processor.crop_size
             data_dict['image'] = torch.zeros(3, crop_size['height'], crop_size['width'])
+            print(f"self.data_args.is_multimodal {self.data_args.is_multimodal}", flush=True)
+        # print(f"input_ids====================== {data_dict['input_ids'].shape}", flush=True)
         return data_dict
 
 
@@ -793,6 +817,7 @@ def train(attn_implementation=None):
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     local_rank = training_args.local_rank
     compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
+    # training_args.model_max_length = training_args.model_max_length * 10
 
     bnb_model_from_pretrained_args = {}
     if training_args.bits in [4, 8]:
@@ -956,20 +981,28 @@ def train(attn_implementation=None):
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
 
+    # model.config.use_flash_attention = False
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,
                     args=training_args,
                     **data_module)
-
+    if local_rank == 0:
+        print(f"================model_args {model_args}================", flush=True)
+        print(f"================training_args {training_args}================", flush=True)
+        print(f"+++++++++++++++++++++++++++++++++++++++++++++", flush=True)
+        print(model, flush=True)
+        print(f"+++++++++++++++++++++++++++++++++++++++++++++", flush=True)
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
+        print(f"================checkpoint {training_args.output_dir}================", flush=True)
         trainer.train(resume_from_checkpoint=True)
     else:
+        print(f"================no checkpoint {training_args.output_dir}================", flush=True)
         trainer.train()
     trainer.save_state()
 
-    model.config.use_cache = True
+    model.config.use_cache = False  # True
 
     if training_args.lora_enable:
         state_dict = get_peft_state_maybe_zero_3(

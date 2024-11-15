@@ -40,8 +40,3 @@ deepspeed  llava/train/train_npu.py \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
     --report_to tensorboard
-
-    # --pretrain_mm_mlp_adapter ./checkpoints/llava-v1.5-7b-pretrain/mm_projector.bin \
-        # --data_path ./playground/data/llava_v1_5_mix665k.json \
-
-    # --model_name_or_path lmsys/vicuna-13b-v1.5 \
