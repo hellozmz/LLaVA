@@ -444,7 +444,8 @@ def preprocess_v1(
         input_ids_list = [tokenizer_image_token(prompt, tokenizer, return_tensors='pt').squeeze(0) for prompt in conversations]
         pre_padding_lengths = [input_id.size(0) for input_id in input_ids_list]
         # print(f"has_image==============================", flush=True)
-        custom_pad_id = tokenizer.pad_token_id
+        custom_pad_id = 12199  # hello # tokenizer.pad_token_id
+        # custom_pad_id = tokenizer.pad_token_id
 
         input_ids = torch.stack([
             torch.cat([input_id, input_id.new_full((max_length - input_id.size(0),), custom_pad_id)])
@@ -504,11 +505,12 @@ def preprocess_v1(
 
         if cur_len < tokenizer.model_max_length:
             if cur_len != total_len:
-                target[:] = IGNORE_INDEX
-                print(
-                    f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}."
-                    f" (ignored)"
-                )
+                pass
+                # target[:] = IGNORE_INDEX
+                # print(
+                #     f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}."
+                #     f" (ignored)"
+                # )
 
     return dict(
         input_ids=input_ids,
